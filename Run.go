@@ -48,12 +48,13 @@ type ImageInfo struct {
 }
 
 var (
-	mutex        sync.Mutex
-	dirPath      string
-	images       []ImageInfo
-	stoploading        = false
-	load               = true
-	imageColumns int32 = 3
+	mutex             sync.Mutex
+	dirPath           string
+	images            []ImageInfo
+	stoploading             = false
+	load                    = true
+	imageColumns      int32 = 3
+	enlargeImageIndex       = -1
 )
 // Run implements the main program loop of the demo. It returns when the platform signals to stop.
 // This demo application shows some basic features of ImGui, as well as exposing the standard demo window.
@@ -123,29 +124,39 @@ func Run(p *platforms.GLFW, r Renderer) {
 							break
 						}
 						loadImageFile(&pointer[i])
-
 					}
 					mutex.Unlock()
 				}()
 			}
-			imgui.Columns(int(imageColumns), "mycolumns3")
-			mwidth := size[0] / float32(imageColumns)
 
-			for i := 0; i < len(images); i++ {
-				if images[i].handle == 0 && images[i].rgba != nil {
-					loadImageTexture(&images[i])
-				}
-				if images[i].width == 0 {
-					continue
-				} else {
-					width := Min(mwidth, float32(images[i].width))
-					height := width / float32(images[i].width) * float32(images[i].height)
 
-					imgui.Image(imgui.TextureID(images[i].handle), imgui.Vec2{width, height})
-					imgui.NextColumn()
+				imgui.Columns(int(imageColumns), "mycolumns3")
+				mwidth := size[0] / float32(imageColumns)
+				for i := 0; i < len(images); i++ {
+					if images[i].handle == 0 && images[i].rgba != nil {
+						loadImageTexture(&images[i])
+					}
+					if images[i].width == 0 {
+						continue
+					} else {
+						width := Min(mwidth, float32(images[i].width))
+						height := width / float32(images[i].width) * float32(images[i].height)
+						if imgui.ImageButton(imgui.TextureID(images[i].handle), imgui.Vec2{width, height}) {
+							enlargeImageIndex = i
+							imgui.OpenPopup("imagePop")
+						}
+						imgui.NextColumn()
+					}
 				}
-			}
-			imgui.Columns(1, "")
+				imgui.Columns(1, "")
+
+				if imgui.BeginPopupModalV("imagePop",nil,imgui.WindowFlagsNoTitleBar|imgui.WindowFlagsAlwaysAutoResize) {
+					if imgui.ImageButton(imgui.TextureID(images[enlargeImageIndex].handle), imgui.Vec2{float32(images[enlargeImageIndex].width), float32(images[enlargeImageIndex].height)}){
+						imgui.CloseCurrentPopup()
+					}
+					imgui.EndPopup()
+				}
+
 
 			//imgui.Checkbox("Another Window", &showAnotherWindow)
 
@@ -219,13 +230,18 @@ func loadImageFile(imageInfo *ImageInfo) {
 	}
 	defer img_file.Close()
 	var img image.Image
-	if strings.HasSuffix(imageInfo.filePath, ".jpg") {
-		img, _ = jpeg.Decode(img_file)
-	} else if strings.HasSuffix(imageInfo.filePath, ".png") {
-		img, _ = png.Decode(img_file)
-	} else if strings.HasSuffix(imageInfo.filePath, ".bmp") {
-		img, _, _ = image.Decode(img_file)
+	filePath:=strings.ToLower(imageInfo.filePath)
+	if strings.HasSuffix(filePath, ".jpg") {
+		img, err = jpeg.Decode(img_file)
+	} else if strings.HasSuffix(filePath, ".png") {
+		img, err = png.Decode(img_file)
+	} else if strings.HasSuffix(filePath, ".bmp") {
+		img, _, err = image.Decode(img_file)
 	} else {
+		return
+	}
+	if err!=nil{
+		fmt.Println(err)
 		return
 	}
 
